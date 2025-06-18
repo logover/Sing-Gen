@@ -8,7 +8,7 @@
 
 ## 兼容性 (Compatibility)
 
-目前已在 Ubuntu 24.04 LTS 上测试通过，理论上兼容 Ubuntu 22.04 / 20.04 版本。
+目前已在 **Ubuntu 24.04** 上测试通过，并加入了对 **CentOS/RHEL/Fedora** 和 **Arch Linux** 的兼容支持。理论上兼容所有使用 `systemd` 的现代Linux发行版。
 
 ## 使用方法 (Usage)
 
