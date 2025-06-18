@@ -29,11 +29,10 @@
     ```
 
 ## 依赖 (Dependencies)
-
-本脚本依赖以下工具。在首次运行时，脚本会自动检查并提示您安装缺失的组件。
+本脚本依赖以下工具。在首次运行时，脚本会自动检测并提示您安装缺失的组件。
 
 * `jq`
 * `qrencode`
 * `nginx`
 * `perl`
-* `dnsutils`
+* `dnsutils` (Debian/Ubuntu) / `bind-utils` (CentOS/RHEL) / `bind` (Arch)
