@@ -1,4 +1,39 @@
-Sing-Gen ✨一个智能、全自动的 sing-box 分享链接生成器。这个脚本能够自动分析您服务器上的 sing-box 和 Nginx 配置，智能地生成可供主流客户端（如 v2rayNG, Shadowrocket, Hiddify-Next 等）直接导入的分享链接和二维码。核心功能 (Features)多协议支持: 全面支持 VLESS (包括 Reality), Trojan, VMess, Shadowsocks, Hysteria2, TUIC, NaiveProxy, SOCKS, HTTP 和 WireGuard 等主流协议。智能环境感知:Nginx感知: 自动分析Nginx配置，精确识别反向代理规则，并使用正确的域名、公网端口及TLS设置。Reality感知: 能够准确区分VLESS-Reality协议中的“真实连接地址”和“伪装域名(SNI)”，生成正确的Reality链接。TLS配置感知: 自动检测sing-box自身inbound中的TLS设置，并将其应用于非Nginx反代的场景。权威域名验证: 通过DNS解析，验证从配置中找到的域名是否真实指向本机IP，极大提高了地址判断的准确性，避免使用错误的伪装域名。零交互体验: 在绝大多数情况下，脚本都能全自动完成所有判断，无需任何手动输入，真正实现“一键生成”。依赖自动处理: 脚本在运行时会自动检查 jq, qrencode, nginx, perl, dnsutils 等依赖。如果发现缺失，会礼貌地询问您是否需要自动安装。清晰的报告:汇总表格: 生成一个精美对齐的表格，概览所有节点的协议、别名和链接。完整链接列表: 在表格下方，清晰列出每一条完整的、可直接复制的分享链接。二维码生成: 为每个节点生成一个可直接在终端扫描的二维码，方便手机客户端导入。使用方法 (Usage)下载脚本将脚本文件（例如，sing-linker.sh）下载到您的服务器上。授予执行权限chmod +x sing-linker.sh
-运行脚本./sing-linker.sh
-脚本会自动开始执行。如果这是您第一次运行，它可能会提示您安装缺失的依赖程序。同意后，脚本会自动完成所有分析和生成工作，并最终展示报告。依赖 (Dependencies)本脚本需要以下命令行工具才能正常工作。脚本会自动检查这些依赖，并在缺失时提示您安装。jq: 用于解析JSON配置文件。qrencode: 用于生成二维码。nginx: 用于读取其配置以判断反向代理。perl: 用于执行健壮的Nginx配置解析。dnsutils (提供 dig 命令): 用于验证域名IP归属。在基于Debian/Ubuntu的系统上，您可以通过以下命令手动安装所有依赖：sudo apt-get update && sudo apt-get install jq qrencode nginx perl dnsutils -y
-希望这份专业的描述能帮助您的项目在GitHub上获得更多关注！
+# Sing-Gen ✨
+
+**一个智能、全自动的 `sing-box` 分享链接生成器。**
+
+这个脚本能够自动分析您服务器上的 `sing-box` 和 `Nginx` 配置，智能地生成可供主流客户端直接导入的分享链接和二维码。
+
+---
+
+## 兼容性 (Compatibility)
+
+目前已在 Ubuntu 24.04 LTS 上测试通过，理论上兼容 Ubuntu 22.04 / 20.04 版本。
+
+## 使用方法 (Usage)
+
+1.  **下载脚本**
+    ```bash
+    # 使用 curl 或 wget 下载脚本
+    curl -o sing-gen.sh [您的脚本下载链接]
+    ```
+
+2.  **授予执行权限**
+    ```bash
+    chmod +x sing-gen.sh
+    ```
+
+3.  **运行脚本**
+    ```bash
+    ./sing-gen.sh
+    ```
+
+## 依赖 (Dependencies)
+
+本脚本依赖以下工具。在首次运行时，脚本会自动检查并提示您安装缺失的组件。
+
+* `jq`
+* `qrencode`
+* `nginx`
+* `perl`
+* `dnsutils`
