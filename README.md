@@ -9,11 +9,11 @@
 
 这是一个基于已经存在的sing-box配置，生成二维码的shell脚本。
 
-## 兼容性 (Compatibility)
+## 兼容性 
 
 目前已在 **Ubuntu 24.04** 上测试通过，并加入了对 **CentOS/RHEL/Fedora** 和 **Arch Linux** 的兼容支持。理论上兼容所有使用 `systemd` 的现代Linux发行版。
 
-## 使用方法 (Usage)
+## 使用方法
 
 1.  **下载脚本**
     ```bash
@@ -31,7 +31,7 @@
     ./sing-gen.sh
     ```
 
-## 依赖 (Dependencies)
+## 依赖
 本脚本依赖以下工具。在首次运行时，脚本会自动检测并提示您安装缺失的组件。
 
 * `jq`
