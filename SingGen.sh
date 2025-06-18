@@ -2,8 +2,7 @@
 
 # =========================================================================
 # sing-box 全自动智能分享链接生成器
-# 作者: logover
-# 功能: 彻底修复端口关联错误，确保每个协议使用正确的公网端口。
+# 兼容支持: CentOS/RHEL/Fedora 和 Arch Linux 
 # =========================================================================
 
 # --- 颜色定义 ---
@@ -14,24 +13,87 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # --- 函数定义 ---
+
+# 检查并自动安装依赖（跨平台版）
 check_dependencies() {
-    local missing_deps=(); echo "正在检查必要的依赖程序 (jq, qrencode, nginx, perl, dnsutils)..."
-    for dep in jq qrencode nginx perl dig; do
-        if ! command -v "$dep" &> /dev/null; then 
-            if [[ "$dep" == "dig" ]]; then missing_deps+=("dnsutils"); else missing_deps+=("$dep"); fi
-        fi
+    local missing_deps=()
+    echo "正在检查必要的依赖程序..."
+
+    # 检查通用依赖
+    for dep in jq qrencode nginx perl; do
+        if ! command -v "$dep" &> /dev/null; then missing_deps+=("$dep"); fi
     done
-    missing_deps=($(printf "%s\n" "${missing_deps[@]}" | sort -u))
-    if [ ${#missing_deps[@]} -ne 0 ]; then
-        echo -e "${YELLOW}警告: 检测到以下依赖程序未安装: ${missing_deps[*]}${NC}"
-        read -p "是否要自动为您安装? (Y/n) " -n 1 -r REPLY < /dev/tty; echo
-        if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
-            echo "正在开始安装..."; if sudo apt-get update; then
-                if sudo apt-get install -y "${missing_deps[@]}"; then echo -e "${GREEN}依赖安装成功！脚本将继续运行。${NC}"; else echo -e "${RED}错误: 依赖安装失败。${NC}"; exit 1; fi
-            else echo -e "${RED}错误: 'apt-get update' 失败。${NC}"; exit 1; fi
-        else echo -e "${RED}用户取消安装。已退出。${NC}"; exit 1; fi
-    else echo -e "${GREEN}所有依赖均已安装。${NC}"; fi
+    # 检查 dig 命令
+    if ! command -v "dig" &> /dev/null; then
+        # dig 命令在不同发行版中由不同包提供
+        missing_deps+=("dig_placeholder")
+    fi
+    
+    if [ ${#missing_deps[@]} -eq 0 ]; then
+        echo -e "${GREEN}所有依赖均已安装。${NC}"
+        return
+    fi
+    
+    # 检测操作系统发行版
+    local os_id=""
+    if [ -f /etc/os-release ]; then
+        os_id=$(grep -oP '^ID=\K\w+' /etc/os-release)
+    else
+        echo -e "${RED}错误: 无法识别您的操作系统发行版。请手动安装依赖。${NC}"
+        exit 1
+    fi
+    
+    local pkg_manager_install=""
+    local pkg_manager_update=""
+    local dns_pkg_name=""
+
+    # 根据发行版设置包管理器和包名
+    case "$os_id" in
+        ubuntu|debian)
+            pkg_manager_update="sudo apt-get update"
+            pkg_manager_install="sudo apt-get install -y"
+            dns_pkg_name="dnsutils"
+            ;;
+        centos|rhel|fedora|rocky|almalinux)
+            if command -v dnf &> /dev/null; then
+                pkg_manager_install="sudo dnf install -y"
+            else
+                pkg_manager_install="sudo yum install -y"
+            fi
+            dns_pkg_name="bind-utils"
+            ;;
+        arch)
+            pkg_manager_install="sudo pacman -S --noconfirm"
+            dns_pkg_name="bind"
+            ;;
+        *)
+            echo -e "${RED}错误: 不支持的操作系统发行版: '$os_id'。请手动安装以下依赖: ${missing_deps[*]}${NC}"
+            exit 1
+            ;;
+    esac
+
+    # 替换占位符为正确的包名
+    missing_deps=("${missing_deps[@]/dig_placeholder/$dns_pkg_name}")
+
+    echo -e "${YELLOW}警告: 检测到以下依赖程序未安装: ${missing_deps[*]}${NC}"
+    read -p "是否要自动为您安装? (Y/n) " -n 1 -r REPLY < /dev/tty; echo
+    if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
+        echo "正在开始安装..."
+        # 如果有更新命令，则执行
+        if [[ -n "$pkg_manager_update" ]]; then
+            $pkg_manager_update || { echo -e "${RED}错误: 包列表更新失败。${NC}"; exit 1; }
+        fi
+        
+        # 安装缺失的包
+        $pkg_manager_install "${missing_deps[@]}" || { echo -e "${RED}错误: 依赖安装失败。${NC}"; exit 1; }
+        
+        echo -e "${GREEN}依赖安装成功！脚本将继续运行。${NC}"
+    else
+        echo -e "${RED}用户取消安装。已退出。${NC}"; exit 1
+    fi
 }
+
+
 find_service_file() {
     local service_name="$1"; local path; path=$(systemctl show -p FragmentPath "${service_name}" 2>/dev/null | cut -d'=' -f2); if [[ -n "$path" && -f "$path" ]]; then echo "$path"; else find /etc/systemd/ /usr/lib/systemd/ -name "${service_name}.service" -print -quit; fi
 }
@@ -136,23 +198,19 @@ while IFS= read -r inbound; do
         if [[ $(echo "$inbound" | jq -r '.flow // ""') == *"vision"* ]]; then is_reality=true; fi
     fi
 
-    # 【V6.1 核心决策】
     if [[ -v proxy_map["$listen_port"] ]]; then
-        # 如果有精确的Nginx反代，使用Nginx的域名和公网端口
         source_of_truth="Nginx (已验证)"; proxy_info=${proxy_map["$listen_port"]}; IFS=';' read -r final_address final_port tls_status <<< "$proxy_info"
         if [[ "$tls_status" == "true" ]]; then final_tls_security="tls"; fi
     else
-        # 对于所有其他情况 (包括Reality和独立运行)
         final_address=$AUTHORITATIVE_ADDRESS
-        final_port=$listen_port # 【V6.1 修复】直接使用自己的监听端口
+        final_port=$listen_port
         
         if [[ "$is_reality" == "true" ]]; then
             source_of_truth="Reality (独立运行)"
             final_tls_security="reality"
-            final_host=$(echo "$inbound" | jq -r '.tls.server_name // ""') # SNI是伪装域名
+            final_host=$(echo "$inbound" | jq -r '.tls.server_name // ""')
         else
             source_of_truth="独立运行"
-            # 判断自身是否有TLS配置
             if [[ $(echo "$inbound" | jq -r '.tls.enabled // "false"') == "true" ]]; then
                  final_tls_security="tls"
             else
@@ -166,32 +224,29 @@ while IFS= read -r inbound; do
     echo -e "${GREEN}为 ${tag} (${listen_port}) 确定出口: ${final_address}:${final_port} (来源: ${source_of_truth})${NC}"
     if [[ -z "$final_address" ]] || [[ -z "$final_port" ]]; then echo -e "${RED}地址或端口为空, 跳过此条目。${NC}"; continue; fi
 
-    # ... (链接生成 case 语句) ...
     share_link=""; encoded_alias=$(jq -nr --arg str "$tag" '$str|@uri')
     case "$protocol_type" in
-        vless)
-            user_id=$(echo "$inbound" | jq -r '.users[0].uuid'); encoded_user_id=$(jq -nr --arg str "$user_id" '$str|@uri'); flow=$(echo "$inbound" | jq -r '.flow // ""'); transport_type=$(echo "$inbound" | jq -r '.transport.type // "tcp"');
-            share_link="${protocol_type}://${encoded_user_id}@${final_address}:${final_port}"; params=""
-            if [[ "$transport_type" == "ws" ]]; then
-                ws_path=$(echo "$inbound" | jq -r '.transport.path // ""'); encoded_path=$(jq -nr --arg str "$ws_path" '$str|@uri'); params="type=ws&security=${final_tls_security}&path=${encoded_path}&host=${final_host}"
-            elif [[ "$is_reality" == "true" ]]; then
-                public_key=$(echo "$inbound" | jq -r '.tls.reality.public_key'); short_id=$(echo "$inbound" | jq -r '.tls.reality.short_id');
-                params="security=reality&sni=${final_host}&flow=${flow}&publicKey=${public_key}&shortId=${short_id}"
-            else
-                 params="security=${final_tls_security}&sni=${final_host}"
-            fi
-            share_link="${share_link}?${params}#${encoded_alias}"
-            ;;
-        trojan)
-             user_id=$(echo "$inbound" | jq -r '.users[0].password'); encoded_user_id=$(jq -nr --arg str "$user_id" '$str|@uri'); transport_type=$(echo "$inbound" | jq -r '.transport.type // "tcp"');
-             if [[ "$transport_type" == "ws" ]]; then
-                 ws_path=$(echo "$inbound" | jq -r '.transport.path // ""'); encoded_path=$(jq -nr --arg str "$ws_path" '$str|@uri'); share_link="trojan://${encoded_user_id}@${final_address}:${final_port}?type=ws&security=${final_tls_security}&path=${encoded_path}&host=${final_host}#${encoded_alias}"
-             else
-                 share_link="trojan://${encoded_user_id}@${final_address}:${final_port}?security=${final_tls_security}&sni=${final_host}#${encoded_alias}"
-             fi
-            ;;
-        vmess|shadowsocks|hysteria2|tuic|naive|socks|http|wireguard)
-            if [[ "$protocol_type" == "vmess" ]]; then
+        vless|trojan|vmess|shadowsocks|hysteria2|tuic|naive|socks|http|wireguard)
+            if [[ "$protocol_type" == "vless" ]]; then
+                user_id=$(echo "$inbound" | jq -r '.users[0].uuid'); encoded_user_id=$(jq -nr --arg str "$user_id" '$str|@uri'); flow=$(echo "$inbound" | jq -r '.flow // ""'); transport_type=$(echo "$inbound" | jq -r '.transport.type // "tcp"');
+                share_link="${protocol_type}://${encoded_user_id}@${final_address}:${final_port}"; params=""
+                if [[ "$transport_type" == "ws" ]]; then
+                    ws_path=$(echo "$inbound" | jq -r '.transport.path // ""'); encoded_path=$(jq -nr --arg str "$ws_path" '$str|@uri'); params="type=ws&security=${final_tls_security}&path=${encoded_path}&host=${final_host}"
+                elif [[ "$is_reality" == "true" ]]; then
+                    public_key=$(echo "$inbound" | jq -r '.tls.reality.public_key'); short_id=$(echo "$inbound" | jq -r '.tls.reality.short_id');
+                    params="security=reality&sni=${final_host}&flow=${flow}&publicKey=${public_key}&shortId=${short_id}"
+                else
+                     params="security=${final_tls_security}&sni=${final_host}"
+                fi
+                share_link="${share_link}?${params}#${encoded_alias}"
+            elif [[ "$protocol_type" == "trojan" ]]; then
+                 user_id=$(echo "$inbound" | jq -r '.users[0].password'); encoded_user_id=$(jq -nr --arg str "$user_id" '$str|@uri'); transport_type=$(echo "$inbound" | jq -r '.transport.type // "tcp"');
+                 if [[ "$transport_type" == "ws" ]]; then
+                     ws_path=$(echo "$inbound" | jq -r '.transport.path // ""'); encoded_path=$(jq -nr --arg str "$ws_path" '$str|@uri'); share_link="trojan://${encoded_user_id}@${final_address}:${final_port}?type=ws&security=${final_tls_security}&path=${encoded_path}&host=${final_host}#${encoded_alias}"
+                 else
+                     share_link="trojan://${encoded_user_id}@${final_address}:${final_port}?security=${final_tls_security}&sni=${final_host}#${encoded_alias}"
+                 fi
+            elif [[ "$protocol_type" == "vmess" ]]; then
                 uuid=$(echo "$inbound" | jq -r '.users[0].uuid'); transport_type=$(echo "$inbound" | jq -r '.transport.type // "tcp"'); vmess_json='{}'
                 if [[ "$transport_type" == "ws" ]]; then
                     ws_path=$(echo "$inbound" | jq -r '.transport.path // ""'); vmess_json=$(jq -n --arg ps "$tag" --arg add "$final_address" --arg port "$final_port" --arg id "$uuid" --arg host "$final_host" --arg path "$ws_path" --arg tls "$final_tls_security" '{v:"2", ps:$ps, add:$add, port:$port, id:$id, aid:"0", scy:"auto", net:"ws", type:"none", host:$host, path:$path, tls:$tls}')
@@ -240,4 +295,3 @@ for i in "${!protocols[@]}"; do
     echo; echo -e "${YELLOW}===> ID: $((i+1)) | 协议: ${protocols[$i]} | 别名: ${aliases[$i]}${NC}"; qrencode -t UTF8 -o - "${share_links[$i]}"
 done
 echo -e "${CYAN}===================================================================${NC}"
-
