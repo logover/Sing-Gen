@@ -15,7 +15,7 @@
 1.  **下载脚本**
     ```bash
     # 使用 curl 或 wget 下载脚本
-    curl -o sing-gen.sh [您的脚本下载链接]
+    curl -o https://raw.githubusercontent.com/logover/Sing-Gen/refs/heads/main/SingGen.sh
     ```
 
 2.  **授予执行权限**
