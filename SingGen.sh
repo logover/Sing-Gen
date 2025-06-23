@@ -1,53 +1,55 @@
 #!/bin/bash
 
 # =========================================================================
-# sing-box 全自动智能分享链接生成器
-# 兼容支持: CentOS/RHEL/Fedora 和 Arch Linux 
+# sing-box Automatic Smart Share Link Generator
+# Compatible with: CentOS/RHEL/Fedora and Arch Linux
 # =========================================================================
 
-# --- 颜色定义 ---
+# Author: logover
+
+# --- Color Definitions ---
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# --- 函数定义 ---
+# --- Function Definitions ---
 
-# 检查并自动安装依赖（跨平台版）
+# Check and automatically install dependencies (cross-platform version)
 check_dependencies() {
     local missing_deps=()
-    echo "正在检查必要的依赖程序..."
+    echo "Checking necessary dependencies..."
 
-    # 检查通用依赖
+    # Check common dependencies
     for dep in jq qrencode nginx perl; do
         if ! command -v "$dep" &> /dev/null; then missing_deps+=("$dep"); fi
     done
-    # 检查 dig 命令
+    # Check dig command
     if ! command -v "dig" &> /dev/null; then
-        # dig 命令在不同发行版中由不同包提供
+        # dig command is provided by different packages on different distributions
         missing_deps+=("dig_placeholder")
     fi
-    
+
     if [ ${#missing_deps[@]} -eq 0 ]; then
-        echo -e "${GREEN}所有依赖均已安装。${NC}"
+        echo -e "${GREEN}All dependencies are installed.${NC}"
         return
     fi
-    
-    # 检测操作系统发行版
+
+    # Detect OS distribution
     local os_id=""
     if [ -f /etc/os-release ]; then
         os_id=$(grep -oP '^ID=\K\w+' /etc/os-release)
     else
-        echo -e "${RED}错误: 无法识别您的操作系统发行版。请手动安装依赖。${NC}"
+        echo -e "${RED}Error: Unable to identify your operating system distribution. Please install dependencies manually.${NC}"
         exit 1
     fi
-    
+
     local pkg_manager_install=""
     local pkg_manager_update=""
     local dns_pkg_name=""
 
-    # 根据发行版设置包管理器和包名
+    # Set package manager and package names based on distribution
     case "$os_id" in
         ubuntu|debian)
             pkg_manager_update="sudo apt-get update"
@@ -67,29 +69,29 @@ check_dependencies() {
             dns_pkg_name="bind"
             ;;
         *)
-            echo -e "${RED}错误: 不支持的操作系统发行版: '$os_id'。请手动安装以下依赖: ${missing_deps[*]}${NC}"
+            echo -e "${RED}Error: Unsupported operating system distribution: '$os_id'. Please install the following dependencies manually: ${missing_deps[*]}${NC}"
             exit 1
             ;;
     esac
 
-    # 替换占位符为正确的包名
+    # Replace placeholder with correct package name
     missing_deps=("${missing_deps[@]/dig_placeholder/$dns_pkg_name}")
 
-    echo -e "${YELLOW}警告: 检测到以下依赖程序未安装: ${missing_deps[*]}${NC}"
-    read -p "是否要自动为您安装? (Y/n) " -n 1 -r REPLY < /dev/tty; echo
+    echo -e "${YELLOW}Warning: The following dependencies are not installed: ${missing_deps[*]}${NC}"
+    read -p "Do you want to install them automatically? (Y/n) " -n 1 -r REPLY < /dev/tty; echo
     if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
-        echo "正在开始安装..."
-        # 如果有更新命令，则执行
+        echo "Starting installation..."
+        # If there's an update command, execute it
         if [[ -n "$pkg_manager_update" ]]; then
-            $pkg_manager_update || { echo -e "${RED}错误: 包列表更新失败。${NC}"; exit 1; }
+            $pkg_manager_update || { echo -e "${RED}Error: Package list update failed.${NC}"; exit 1; }
         fi
-        
-        # 安装缺失的包
-        $pkg_manager_install "${missing_deps[@]}" || { echo -e "${RED}错误: 依赖安装失败。${NC}"; exit 1; }
-        
-        echo -e "${GREEN}依赖安装成功！脚本将继续运行。${NC}"
+
+        # Install missing packages
+        $pkg_manager_install "${missing_deps[@]}" || { echo -e "${RED}Error: Dependency installation failed.${NC}"; exit 1; }
+
+        echo -e "${GREEN}Dependencies installed successfully! Script will continue.${NC}"
     else
-        echo -e "${RED}用户取消安装。已退出。${NC}"; exit 1
+        echo -e "${RED}User canceled installation. Exiting.${NC}"; exit 1
     fi
 }
 
@@ -98,7 +100,7 @@ find_service_file() {
     local service_name="$1"; local path; path=$(systemctl show -p FragmentPath "${service_name}" 2>/dev/null | cut -d'=' -f2); if [[ -n "$path" && -f "$path" ]]; then echo "$path"; else find /etc/systemd/ /usr/lib/systemd/ -name "${service_name}.service" -print -quit; fi
 }
 find_singbox_configs() {
-    local service_file; service_file=$(find_service_file "sing-box"); if [[ -z "$service_file" ]]; then echo -e "${RED}错误: 找不到 sing-box.service 文件。${NC}" >&2; return 1; fi; local config_path; config_path=$(grep -oP '(-C|--config)\s+\K(\S+)' "$service_file" | head -n 1); if [[ -z "$config_path" ]]; then config_path="/etc/sing-box/"; fi; if [[ -d "$config_path" ]]; then find "$config_path" -maxdepth 1 -type f -name "*.json"; elif [[ -f "$config_path" ]]; then echo "$config_path"; else echo -e "${RED}错误: 在 ${service_file} 中找不到有效的配置路径。${NC}" >&2; return 1; fi
+    local service_file; service_file=$(find_service_file "sing-box"); if [[ -z "$service_file" ]]; then echo -e "${RED}Error: sing-box.service file not found.${NC}" >&2; return 1; fi; local config_path; config_path=$(grep -oP '(-C|--config)\s+\K(\S+)' "$service_file" | head -n 1); if [[ -z "$config_path" ]]; then config_path="/etc/sing-box/"; fi; if [[ -d "$config_path" ]]; then find "$config_path" -maxdepth 1 -type f -name "*.json"; elif [[ -f "$config_path" ]]; then echo "$config_path"; else echo -e "${RED}Error: No valid configuration path found in ${service_file}.${NC}" >&2; return 1; fi
 }
 find_nginx_proxies() {
     local conf; conf=$(nginx -T 2>/dev/null); if [ $? -ne 0 ]; then return; fi
@@ -119,48 +121,76 @@ find_nginx_proxies() {
         }
     ' <<< "$conf" | sort -u
 }
+
+# Function to get the public IP of the server
+# This is crucial for Oracle Cloud where instances have private NICs but public IPs via gateway
 get_public_ip() {
-    curl -s https://ipinfo.io/ip || curl -s https://ifconfig.me || hostname -I | awk '{print $1}'
-}
-validate_domain() {
-    local domain_to_check="$1"; local local_ips; local_ips=$(hostname -I); local resolved_ips; resolved_ips=$(dig +short "$domain_to_check" A);
-    if [[ -z "$resolved_ips" ]]; then echo "  -> ${YELLOW}警告: 无法解析域名 ${domain_to_check}。${NC}" >&2; return 1; fi
-    for resolved_ip in $resolved_ips; do
-        for local_ip in $local_ips; do
-            if [[ "$resolved_ip" == "$local_ip" ]]; then echo "  -> ${GREEN}验证成功: 域名 ${domain_to_check} 解析到本机IP ${resolved_ip}。${NC}" >&2; return 0; fi
-        done
-    done
-    echo "  -> ${YELLOW}验证失败: 域名 ${domain_to_check} 未解析到本机。${NC}" >&2; return 1
+    curl -s https://ipinfo.io/ip || curl -s https://ifconfig.me
 }
 
-# --- 脚本主逻辑 ---
+# Validate if a domain resolves to the server's public IP
+validate_domain() {
+    local domain_to_check="$1"
+    # Get the server's public IP
+    local public_ip; public_ip=$(get_public_ip)
+    
+    # If unable to get public IP, fallback to using local private IP (not recommended for Oracle Cloud, but as a last resort)
+    if [[ -z "$public_ip" ]]; then
+        echo -e "${YELLOW}Warning: Unable to obtain public IP, attempting to use local private IP for verification.${NC}" >&2
+        public_ip=$(hostname -I | awk '{print $1}') # Get the first private IP
+    fi
+
+    if [[ -z "$public_ip" ]]; then
+        echo -e "${RED}Error: Unable to obtain any valid IP for domain validation. Please check network connectivity or DNS settings.${NC}" >&2
+        return 1
+    fi
+
+    local resolved_ips; resolved_ips=$(dig +short "$domain_to_check" A)
+
+    if [[ -z "$resolved_ips" ]]; then
+        echo "  -> ${YELLOW}Warning: Unable to resolve domain ${domain_to_check}. Please check domain configuration.${NC}" >&2
+        return 1
+    fi
+
+    for resolved_ip in $resolved_ips; do
+        if [[ "$resolved_ip" == "$public_ip" ]]; then
+            echo "  -> ${GREEN}Validation successful: Domain ${domain_to_check} resolves to public IP ${resolved_ip} of this host.${NC}" >&2
+            return 0
+        fi
+    done
+    
+    echo "  -> ${YELLOW}Validation failed: Domain ${domain_to_check} does not resolve to public IP ${public_ip} of this host.${NC}" >&2
+    return 1
+}
+
+# --- Script Main Logic ---
 check_dependencies
 
 declare -a protocols=(); declare -a aliases=(); declare -a share_links=()
 AUTHORITATIVE_ADDRESS=""
 
-echo -e "\n${CYAN}欢迎使用 sing-box 全自动智能分享链接生成器 ✨${NC}"
+echo -e "\n${CYAN}Welcome to sing-box Automatic Smart Share Link Generator ✨${NC}"
 echo "--------------------------------------------------"
 
 mapfile -t config_files < <(find_singbox_configs)
-if [ ${#config_files[@]} -eq 0 ]; then echo -e "${RED}未能找到任何 sing-box 配置文件。脚本退出。${NC}"; exit 1; fi
+if [ ${#config_files[@]} -eq 0 ]; then echo -e "${RED}No sing-box configuration files found. Exiting script.${NC}"; exit 1; fi
 selected_config=""
 if [ ${#config_files[@]} -eq 1 ]; then
     selected_config=${config_files[0]}
-    echo "自动选择唯一的配置文件: $selected_config"
+    echo "Automatically selected the only configuration file: $selected_config"
 else
-    echo -e "${YELLOW}找到以下 sing-box 配置文件:${NC}"; select config in "${config_files[@]}"; do if [[ -n "$config" ]]; then selected_config=$config; echo "您选择了: $selected_config"; break; else echo "无效的选择，请重试。"; fi; done
+    echo -e "${YELLOW}Found the following sing-box configuration files:${NC}"; select config in "${config_files[@]}"; do if [[ -n "$config" ]]; then selected_config=$config; echo "You selected: $selected_config"; break; else echo "Invalid choice, please try again."; fi; done
 fi
 
 echo "--------------------------------------------------"
-echo "正在分析 Nginx 和 sing-box 配置以寻找权威域名..."
+echo "Analyzing Nginx and sing-box configurations to find authoritative domain..."
 declare -A proxy_map
 while IFS=';' read -r internal_port server_name public_port tls_status; do
     if validate_domain "$server_name"; then
         proxy_map["$internal_port"]="$server_name;$public_port;$tls_status"
         if [[ -z "$AUTHORITATIVE_ADDRESS" ]]; then
             AUTHORITATIVE_ADDRESS=$server_name
-            echo -e "${GREEN}通过Nginx确立权威域名: ${AUTHORITATIVE_ADDRESS}${NC}"
+            echo -e "${GREEN}Authoritative domain established via Nginx: ${AUTHORITATIVE_ADDRESS}${NC}"
         fi
     fi
 done < <(find_nginx_proxies)
@@ -172,7 +202,7 @@ if [[ -z "$AUTHORITATIVE_ADDRESS" ]]; then
         if [[ -n "$server_name" ]]; then
             if validate_domain "$server_name"; then
                 AUTHORITATIVE_ADDRESS=$server_name
-                echo -e "${GREEN}通过sing-box TLS确立权威域名: ${AUTHORITATIVE_ADDRESS}${NC}"
+                echo -e "${GREEN}Authoritative domain established via sing-box TLS: ${AUTHORITATIVE_ADDRESS}${NC}"
                 break
             fi
         fi
@@ -180,49 +210,49 @@ if [[ -z "$AUTHORITATIVE_ADDRESS" ]]; then
 fi
 
 if [[ -z "$AUTHORITATIVE_ADDRESS" ]]; then
-    echo -e "${YELLOW}警告：未能从任何配置中自动验证一个权威域名。${NC}"
-    echo "将进入一次性手动配置模式..."
+    echo -e "${YELLOW}Warning: Failed to automatically validate an authoritative domain from any configuration.${NC}"
+    echo "Entering one-time manual configuration mode..."
     public_ip=$(get_public_ip)
-    read -p "检测到公网IP是 [${public_ip}]。请输入所有配置共用的域名 (推荐), 或直接回车使用IP: " manual_addr < /dev/tty
+    read -p "Detected public IP is [${public_ip}]. Please enter the domain shared by all configurations (recommended), or press Enter to use IP: " manual_addr < /dev/tty
     if [[ -z "$manual_addr" ]]; then AUTHORITATIVE_ADDRESS=$public_ip; else AUTHORITATIVE_ADDRESS=$manual_addr; fi
 fi
 
 echo "--------------------------------------------------"
-echo "正在根据最终确定的出口信息生成链接..."
+echo "Generating links based on final determined egress information..."
 while IFS= read -r inbound; do
-    protocol_type=$(echo "$inbound" | jq -r '.type'); listen_port=$(echo "$inbound" | jq -r '.listen_port'); tag=$(echo "$inbound" | jq -r '.tag // "默认别名"')
+    protocol_type=$(echo "$inbound" | jq -r '.type'); listen_port=$(echo "$inbound" | jq -r '.listen_port'); tag=$(echo "$inbound" | jq -r '.tag // "Default Alias"')
     final_address=""; final_port=""; final_host=""; final_tls_security="none"; source_of_truth=""
-    
+
     is_reality=false
     if [[ "$protocol_type" == "vless" ]]; then
         if [[ $(echo "$inbound" | jq -r '.flow // ""') == *"vision"* ]]; then is_reality=true; fi
     fi
 
     if [[ -v proxy_map["$listen_port"] ]]; then
-        source_of_truth="Nginx (已验证)"; proxy_info=${proxy_map["$listen_port"]}; IFS=';' read -r final_address final_port tls_status <<< "$proxy_info"
+        source_of_truth="Nginx (Verified)"; proxy_info=${proxy_map["$listen_port"]}; IFS=';' read -r final_address final_port tls_status <<< "$proxy_info"
         if [[ "$tls_status" == "true" ]]; then final_tls_security="tls"; fi
     else
         final_address=$AUTHORITATIVE_ADDRESS
         final_port=$listen_port
-        
+
         if [[ "$is_reality" == "true" ]]; then
-            source_of_truth="Reality (独立运行)"
+            source_of_truth="Reality (Standalone)"
             final_tls_security="reality"
             final_host=$(echo "$inbound" | jq -r '.tls.server_name // ""')
         else
-            source_of_truth="独立运行"
+            source_of_truth="Standalone"
             if [[ $(echo "$inbound" | jq -r '.tls.enabled // "false"') == "true" ]]; then
-                 final_tls_security="tls"
+                final_tls_security="tls"
             else
-                 final_tls_security="none"
+                final_tls_security="none"
             fi
         fi
     fi
-    
+
     if [[ -z "$final_host" ]]; then final_host=$final_address; fi
-    
-    echo -e "${GREEN}为 ${tag} (${listen_port}) 确定出口: ${final_address}:${final_port} (来源: ${source_of_truth})${NC}"
-    if [[ -z "$final_address" ]] || [[ -z "$final_port" ]]; then echo -e "${RED}地址或端口为空, 跳过此条目。${NC}"; continue; fi
+
+    echo -e "${GREEN}Egress for ${tag} (${listen_port}): ${final_address}:${final_port} (Source: ${source_of_truth})${NC}"
+    if [[ -z "$final_address" ]] || [[ -z "$final_port" ]]; then echo -e "${RED}Address or port is empty, skipping this entry.${NC}"; continue; fi
 
     share_link=""; encoded_alias=$(jq -nr --arg str "$tag" '$str|@uri')
     case "$protocol_type" in
@@ -236,16 +266,16 @@ while IFS= read -r inbound; do
                     public_key=$(echo "$inbound" | jq -r '.tls.reality.public_key'); short_id=$(echo "$inbound" | jq -r '.tls.reality.short_id');
                     params="security=reality&sni=${final_host}&flow=${flow}&publicKey=${public_key}&shortId=${short_id}"
                 else
-                     params="security=${final_tls_security}&sni=${final_host}"
+                    params="security=${final_tls_security}&sni=${final_host}"
                 fi
                 share_link="${share_link}?${params}#${encoded_alias}"
             elif [[ "$protocol_type" == "trojan" ]]; then
-                 user_id=$(echo "$inbound" | jq -r '.users[0].password'); encoded_user_id=$(jq -nr --arg str "$user_id" '$str|@uri'); transport_type=$(echo "$inbound" | jq -r '.transport.type // "tcp"');
-                 if [[ "$transport_type" == "ws" ]]; then
-                     ws_path=$(echo "$inbound" | jq -r '.transport.path // ""'); encoded_path=$(jq -nr --arg str "$ws_path" '$str|@uri'); share_link="trojan://${encoded_user_id}@${final_address}:${final_port}?type=ws&security=${final_tls_security}&path=${encoded_path}&host=${final_host}#${encoded_alias}"
-                 else
-                     share_link="trojan://${encoded_user_id}@${final_address}:${final_port}?security=${final_tls_security}&sni=${final_host}#${encoded_alias}"
-                 fi
+                user_id=$(echo "$inbound" | jq -r '.users[0].password'); encoded_user_id=$(jq -nr --arg str "$user_id" '$str|@uri'); transport_type=$(echo "$inbound" | jq -r '.transport.type // "tcp"');
+                if [[ "$transport_type" == "ws" ]]; then
+                    ws_path=$(echo "$inbound" | jq -r '.transport.path // ""'); encoded_path=$(jq -nr --arg str "$ws_path" '$str|@uri'); share_link="trojan://${encoded_user_id}@${final_address}:${final_port}?type=ws&security=${final_tls_security}&path=${encoded_path}&host=${final_host}#${encoded_alias}"
+                else
+                    share_link="trojan://${encoded_user_id}@${final_address}:${final_port}?security=${final_tls_security}&sni=${final_host}#${encoded_alias}"
+                fi
             elif [[ "$protocol_type" == "vmess" ]]; then
                 uuid=$(echo "$inbound" | jq -r '.users[0].uuid'); transport_type=$(echo "$inbound" | jq -r '.transport.type // "tcp"'); vmess_json='{}'
                 if [[ "$transport_type" == "ws" ]]; then
@@ -269,29 +299,29 @@ while IFS= read -r inbound; do
             fi
             ;;
     esac
-        
+
     if [[ -n "$share_link" ]]; then
         protocols+=("$protocol_type"); aliases+=("$tag"); share_links+=("$share_link")
     fi
 done < <(jq -c '.inbounds[]' "$selected_config")
 
-# --- 报告生成阶段 ---
+# --- Report generation phase ---
 echo "--------------------------------------------------"
-if [ ${#protocols[@]} -eq 0 ]; then echo -e "${RED}处理完成，但未找到任何支持的入站代理。${NC}"; exit 0; fi
-echo -e "${GREEN}✅ 所有配置处理完毕，生成汇总报告如下：${NC}"
-printf "\n"; printf "+----+-------------+--------------------------+----------------------------------------------------+\n"; printf "| %-2s | %-11s | %-24s | %-50s |\n" "ID" "协议" "别名 (Alias)" "分享链接 (概览)"; printf "+----+-------------+--------------------------+----------------------------------------------------+\n"
+if [ ${#protocols[@]} -eq 0 ]; then echo -e "${RED}Processing complete, but no supported inbound proxies found.${NC}"; exit 0; fi
+echo -e "${GREEN}✅ All configurations processed, summary report generated below:${NC}"
+printf "\n"; printf "+----+-------------+--------------------------+----------------------------------------------------+\n"; printf "| %-2s | %-11s | %-24s | %-50s |\n" "ID" "Protocol" "Alias" "Share Link (Overview)"; printf "+----+-------------+--------------------------+----------------------------------------------------+\n"
 for i in "${!protocols[@]}"; do
     display_link=${share_links[$i]}; if ((${#display_link} > 48)); then display_link="${display_link:0:45}..."; fi
     printf "| %-2s | %-11s | %-24s | %-50s |\n" "$((i+1))" "${protocols[$i]}" "${aliases[$i]}" "$display_link"
 done
 printf "+----+-------------+--------------------------+----------------------------------------------------+\n"; printf "\n"
-echo -e "${CYAN}===================== 完整分享链接 (可直接复制) =====================${NC}"
+echo -e "${CYAN}===================== Full Share Links (Copyable) =====================${NC}"
 for i in "${!protocols[@]}"; do
-    echo; echo -e "${YELLOW}===> ID: $((i+1)) | 别名: ${aliases[$i]}${NC}"; echo -e "${GREEN}${share_links[$i]}${NC}"
+    echo; echo -e "${YELLOW}===> ID: $((i+1)) | Alias: ${aliases[$i]}${NC}"; echo -e "${GREEN}${share_links[$i]}${NC}"
 done
 echo; echo -e "${CYAN}===================================================================${NC}"
-echo -e "${CYAN}===================== 二维码区域 (可直接扫描) =====================${NC}"
+echo -e "${CYAN}===================== QR Code Area (Scannable) =====================${NC}"
 for i in "${!protocols[@]}"; do
-    echo; echo -e "${YELLOW}===> ID: $((i+1)) | 协议: ${protocols[$i]} | 别名: ${aliases[$i]}${NC}"; qrencode -t UTF8 -o - "${share_links[$i]}"
+    echo; echo -e "${YELLOW}===> ID: $((i+1)) | Protocol: ${protocols[$i]} | Alias: ${aliases[$i]}${NC}"; qrencode -t UTF8 -o - "${share_links[$i]}"
 done
 echo -e "${CYAN}===================================================================${NC}"
